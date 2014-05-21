@@ -1,0 +1,257 @@
+import java.io.*;
+import java.util.*;
+
+public class RecurrentMLP
+{
+  private double eta;
+  private double threshold;
+  private String trainFile;
+  private String testFile;
+  private int inputLength;
+  private ArrayList < Neuron > hiddenLayer;	// camada escondida
+  private ArrayList < Neuron > outputLayer;	// camada de saida
+
+  public RecurrentMLP (double eta, String trainFile, String testFile,
+	      int inputLength, int hiddenLength, int outputLength,
+	      double threshold)
+  {
+
+    this.eta = eta;
+    this.threshold = threshold;
+    this.inputLength = inputLength;
+    this.trainFile = trainFile;
+    this.testFile = testFile;
+
+    // criando camada escondida
+    this.hiddenLayer = new ArrayList < Neuron > ();
+    for (int i = 0; i < hiddenLength; i++)
+      {
+	this.hiddenLayer.add (new Neuron (inputLength + 1));
+      }
+
+    // criando camada de saida
+    this.outputLayer = new ArrayList < Neuron > ();
+    for (int i = 0; i < outputLength; i++)
+      {
+	this.outputLayer.add (new Neuron (hiddenLength + 1));
+      }
+  }
+
+  public void forward (int epochs) throws Exception
+  {
+
+    double input[] = new double[this.inputLength];
+    double hidden2output[] = new double[this.hiddenLayer.size ()];
+    double output[] = new double[this.outputLayer.size ()];
+    double expected[] = new double[this.outputLayer.size ()];
+    Scanner file = new Scanner (new File (this.testFile));
+
+	if (file.hasNext ())
+	  {
+	    // lendo doubles como entrada para a MLP
+	    for (int i = 0; i < this.inputLength; i++)
+	      {
+		input[i] = file.nextDouble ();
+	      }
+	  }
+
+      for (int j = 0; j < epochs; j++) {
+	// aplicar input na MLP
+	// CAMADA ESCONDIDA
+	for (int i = 0; i < this.hiddenLayer.size (); i++)
+	  {
+	    Neuron neuron = this.hiddenLayer.get (i);
+	    double net = neuron.net (input);
+	    hidden2output[i] = neuron.activation (net);
+	  }
+
+	// CAMADA DE SAIDA
+	for (int i = 0; i < this.outputLayer.size (); i++)
+	  {
+	    Neuron neuron = this.outputLayer.get (i);
+	    double net = neuron.net (hidden2output);
+	    output[i] = neuron.activation (net);
+	    System.out.print(output[i]+" ");
+	  }
+	  System.out.println();
+
+	input = output;
+     }
+  }
+
+  public void backpropagation () throws Exception
+  {
+
+    double input[] = new double[this.inputLength];
+    double hidden2output[] = new double[this.hiddenLayer.size ()];
+    double output[] = new double[this.outputLayer.size ()];
+    double expected[] = new double[this.outputLayer.size ()];
+
+    double sumError = 0;
+    int epochs = 0;
+    do
+      {
+	Scanner file = new Scanner (new File (this.trainFile));
+
+	while (file.hasNext ())
+	  {
+
+	    // lendo doubles como entrada para a MLP
+	    for (int i = 0; i < this.inputLength; i++)
+	      {
+		input[i] = file.nextDouble ();
+	      }
+
+	    // lendo a saida esperada ou desejada
+	    for (int i = 0; i < this.outputLayer.size (); i++)
+	      {
+		expected[i] = file.nextDouble ();
+	      }
+
+	    // aplicar input na MLP
+	    // CAMADA ESCONDIDA
+	    for (int i = 0; i < this.hiddenLayer.size (); i++)
+	      {
+		Neuron neuron = this.hiddenLayer.get (i);
+		double net = neuron.net (input);
+		hidden2output[i] = neuron.activation (net);
+	      }
+
+	    // CAMADA DE SAIDA
+	    for (int i = 0; i < this.outputLayer.size (); i++)
+	      {
+		Neuron neuron = this.outputLayer.get (i);
+		double net = neuron.net (hidden2output);
+		output[i] = neuron.activation (net);
+
+		sumError += Math.pow (expected[i] - output[i], 2.0);
+	      }
+
+	    double outputLayerWeights[][] = 
+		    new double[this.outputLayer.size()][this.hiddenLayer.size()+1];
+
+	    // ADAPTACAO DE PESOS (APRENDIZADO)
+	    for (int i = 0; i < this.outputLayer.size (); i++)
+	      {
+		double delta = (expected[i] - output[i]) *
+		  (output[i] * (1.0 - output[i]));
+
+		Neuron neuron = this.outputLayer.get (i);
+		double[] w_t = neuron.getWeights ();
+		double[] w_t_1 = new double[w_t.length];
+
+		// a atualizacao dos pesos cam saida
+		w_t_1[0] = w_t[0] + this.eta * delta * 1.0;
+		outputLayerWeights[i][0] = w_t[0];
+		for (int j = 0; j < this.hiddenLayer.size (); j++)
+		  {
+		    w_t_1[j + 1] = w_t[j + 1] + this.eta * delta * hidden2output[j];
+		    outputLayerWeights[i][j + 1] = w_t[j + 1];
+		  }
+
+		neuron.setWeights (w_t_1); // alterando pesos cam saida
+	      }
+
+	    // para cada neuronio da camada escondida
+	    for (int i = 0; i < this.hiddenLayer.size (); i++)
+	      {
+		Neuron n = this.hiddenLayer.get (i);
+		double w_t[] = n.getWeights ();
+		double w_t_1[] = new double[w_t.length];
+
+		// para cada um dos pesos deste neuronio
+		// atualizando peso relativo ao theta
+		double sum = 0;
+		for (int k = 0; k < this.outputLayer.size (); k++)
+		  {
+		    //Neuron nk = this.outputLayer.get (k);
+		    //double wk[] = nk.getWeights ();
+		    sum += (expected[k] - output[k]) *
+		      output[k] * (1.0 - output[k]) * 
+		    	outputLayerWeights[k][i+1]; // Este indice estava i mas deveria ser i+1
+		  }
+		w_t_1[0] = w_t[0] + this.eta * hidden2output[i] *
+		  (1.0 - hidden2output[i]) * 1.0 * sum;
+
+		// atualizando demais pesos
+		for (int j = 1; j < w_t.length; j++)
+		  {
+		    sum = 0;
+		    for (int k = 0; k < this.outputLayer.size (); k++)
+		      {
+			//Neuron nk = this.outputLayer.get (k);
+			//double wk[] = nk.getWeights ();
+			sum += (expected[k] - output[k]) *
+			  output[k] * (1.0 - output[k]) * 
+		    		outputLayerWeights[k][i+1]; // Este indice estava i mas deveria ser i+1
+		      }
+		    w_t_1[j] = w_t[j] + this.eta *
+		      hidden2output[i] * (1.0 - hidden2output[i]) * 
+		      	input[j - 1] * sum;
+		  }
+
+		n.setWeights (w_t_1);
+	      }
+
+	    /*
+	       // Imprimindo a entrada (input)
+	       for (int i = 0; i < this.inputLength; i++) {
+	       System.out.print(input[i]+"\t");
+	       }
+	       System.out.print("|\t");
+	       // Imprimindo a saida (output)
+	       for (int i = 0; i < output.length; i++) {
+	       System.out.print(output[i]+"\t");
+	       }
+	       System.out.println();
+	     */
+	  }
+
+	epochs++;
+	System.out.println ("sumError = " + (sumError / epochs));
+	file.close();
+
+      }
+    while (sumError / epochs > threshold);
+
+  }
+
+  public void printInfo() {
+	System.out.println("Information about weights");
+	for (int i = 0; i < this.hiddenLayer.size(); i++) {
+		Neuron n = this.hiddenLayer.get(i);
+		for (int j = 0; j < n.getWeights().length; j++) {
+			System.out.print(n.getWeights()[j]+"\t");
+		}
+		System.out.println();
+	}
+  }
+
+  public static void main (String args[]) throws Exception
+  {
+
+    if (args.length != 7)
+      {
+	System.out.
+	  println
+	  ("java RecurrentMLP eta trainFile testFile inputLength hiddenLength outputLength threshold epochs_for_prediction");
+	System.exit (0);
+      }
+
+    double eta = Double.parseDouble (args[0]);
+    String trainFile = args[1];
+    String testFile = args[2];
+    int inputLength = Integer.parseInt (args[3]);
+    int hiddenLength = Integer.parseInt (args[4]);
+    int outputLength = Integer.parseInt (args[5]);
+    double threshold = Double.parseDouble(args[6]);
+    int epochs = Integer.parseInt (args[7]);
+
+    RecurrentMLP mlp = new RecurrentMLP (eta, trainFile, testFile,
+		       inputLength, hiddenLength,
+		       outputLength, threshold);
+    mlp.backpropagation();
+    mlp.forward (epochs);
+    mlp.printInfo();
+  }
+}
