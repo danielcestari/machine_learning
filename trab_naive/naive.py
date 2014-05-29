@@ -363,7 +363,12 @@ def learn_naivebayes_text(texts=[]):
 		for word, freq in topics[topic]['P_wk'].items():
 			topics[topic]['P_wk'][word] = context.divide(
 			Decimal(freq), Decimal(total_words + vocabulary_size))
-	
+		
+		# crio uma palavra nao existente como um marcador para 
+		# palavras nao vistas
+		topics[topic]['P_wk']['espuria'] = context.divide(
+			Decimal(1), Decimal(total_words + vocabulary_size))
+
 	print('\n\nTopicos processados: %d' % len(topics.keys()))
 	print('Tamanho do vocabulario: %d' % vocabulary_size)
 	
@@ -396,6 +401,8 @@ def query_naivebayes(model={}, text='', k=1):
 		words = text_processing( replace(r'([^a-zA-Z ]+)', r'', text) )
 	else:
 		words = text
+	
+	#return model
 
 	# cria vetor de probabilidades 
 	prob_topic = list()
@@ -404,10 +411,14 @@ def query_naivebayes(model={}, text='', k=1):
 		#print("Calculando topico: %s" % topic)
 		
 		prob = context.ln(model[topic]['P_topic'])
+		words_of_topic = model[topic]['P_wk'].keys()
 		#print("ANTES %s" % words)
 		for wk in words:
 			#print("PROBLEMA %s %f %f" % (wk, model[topic]['P_wk'][wk], log(model[topic]['P_wk'][wk])))
-			prob += context.ln( model[topic]['P_wk'][wk] )
+			if not wk in words_of_topic:
+				prob += context.ln( model[topic]['P_wk']['espuria'] )
+			else:
+				prob += context.ln( model[topic]['P_wk'][wk] )
 		prob_topic.append( {topic: prob} )
 	
 	sorted_probs = sorted(prob_topic, key=lambda k: tuple(k.values())[0], 
@@ -469,28 +480,34 @@ text3 = "The International Coffee Organization (ICO ) council talks on reintrodu
 #
 ###
 
-def validate_naivebayes(model, proc_texts={}, k=5):
+def validate_naivebayes(model, proc_texts={}, k=5, silence=True):
 	total_texts = len(proc_texts['texts'])
 	
 	from datetime import datetime as date
 	print("Validando " + date.now().strftime('[%Y-%m-%d %H:%M:%S]')) 
-	print("Tamanho do testset %d \n"% total_texts)
 
 	acertos = 0
 	for index in range(0, total_texts):
 		text = proc_texts['texts'][index]
+	
+		# se o texto eh vazio, lista vazia, continua o loop
+		if not text:
+			total_texts -= 1
+			continue
 		probs = query_naivebayes(model, text, k)
+
 		result = set([tuple(i.keys())[0] for i in probs]) & \
 					set(proc_texts['text_to_topics'][index])
 
-		print("Texto Atual %d"% index)
+		print("Texto Atual %d"% (index))
 		
 		# se a interseccao entre probs e os topicos desejados
 		# tiver ao menos um elementos, entao acertou
-		if len(result) > 0:
+		if result:
 			acertos += 1
-			print("\t\tACERTOU")
 	
+	print("\nQUANTIDADE DE ACERTOS %d\n"% acertos)
+
 	return acertos / total_texts
 
 
@@ -503,13 +520,16 @@ def validate_naivebayes(model, proc_texts={}, k=5):
 # min_text		=> Numero minimo de noticias um topico (classe)
 #					deve ter para ser aceito como valido e nao
 # 					ser descartado
+# k				=> Compara os topicos desejados para o texto
+#					com os "k" topicos mais provaveis que o
+#					naive bayes retorna
 ##
 #
 #
 ###
 
 def avalia_naivebayes(directory='./', texts={}, training_prop=0.7, 
-						min_text=100):
+						min_text=100, k=5):
 	from os import listdir
 	from random import sample
 
@@ -543,16 +563,49 @@ def avalia_naivebayes(directory='./', texts={}, training_prop=0.7,
 	print("Criando training-set e test-set dentre %d textos validos" 
 			% len(valid_texts))
 
-	return valid_texts
-
 	train_ids = sample(range(0, len(valid_texts)), 
 					round(len(valid_texts)*training_prop))
+	train_ids = sorted([list(valid_texts)[i] for i in train_ids])
+	test_ids = sorted(list(valid_texts - set(train_ids)))
+	
+	training_set = {'texts':[], 'topics':{}}
+	test_set = {'texts': [], 'text_to_topics': []}
+	# pega os textos, conteudo, para o conjunto de treinamento e teste
+	for text in range(0, len(proc_texts['texts'])):
+		content = []
+		if text in train_ids:
+			content = proc_texts['texts'][text]
+		training_set['texts'].append(content)
+		
+		test_topics = []
+		content = []
+		if text in test_ids:
+			content = proc_texts['texts'][text]
+			test_topics = proc_texts['text_to_topics'][text]
+		test_set['texts'].append(content)
+		test_set['text_to_topics'].append(test_topics)
+
 	
 
-	test_ids = list(valid_texts - set(train_ids))
+	for topic in valid_topics:
+		# pega apenas textos do conjunto de treinamento para 
+		# o topico em questao
+		training_set['topics'].update( \
+				{topic: list(set(train_ids) & set(proc_texts['topics'][topic])) })
 	
 
+	# "treina" o modelo
+	print("\nProcesso de treinamento")
+	model = learn_naivebayes_text(training_set)
+	#model = learn_naivebayes_text(proc_texts)
 
+	# avaliando modelo, retorna os "k" topicos mais provaveis
+	print("\nProcesso de validacao")
+	acertos = validate_naivebayes(model=model, proc_texts=test_set, k=k, silence=True)
+	
+	print("\n\nPorcentagem de acertos %f\n\n"% acertos)
 
-	return {'train':train_texts, 'teste': test_texts}
+	return {'dataset': proc_texts, 'test_ids':test_ids, 
+			'training_set':training_set ,'test_set':test_set,
+			'model': model, 'acertos': acertos}
 
