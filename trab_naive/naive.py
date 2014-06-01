@@ -20,16 +20,30 @@ def text_processing(text, min_size=4, sep_char=' '):
 	stopwords = set(stwds.words('english') + 
 			contractions_without_punc)
 	
-	text = [w for w in text.split(sep_char) 
+	text = [stemmer.stem(w) for w in text.split(sep_char) 
 			if not w in stopwords
 			and len(w) >= min_size]
+
+	return text
 	words = list()
 	for word in text:
 		words.append(stemmer.stem(word))
 	
 	return words
 
+def nltk_tokenizer(text, min_size=4, *args, **kwargs):
+	from nltk.stem.snowball import EnglishStemmer
+	from nltk.corpus import stopwords as stwds
+	from nltk.tokenize import TreebankWordTokenizer
+	
+	stemmer = EnglishStemmer()
+	stopwords = set(stwds.words('english'))
+	
+	text = [stemmer.stem(w) for w in TreebankWordTokenizer().
+			tokenize(text) if not w in stopwords 
+			and len(w) >= min_size]
 
+	return text
 
 ###
 # Funcao que prepara os dados vindos do Reuters dataset
@@ -57,7 +71,7 @@ def text_processing(text, min_size=4, sep_char=' '):
 ###
 
 def prepare_reuters_data(file_name_list=list(), 
-			process_text=True,
+			min_word_size=4, process_text=True,
 			text_processing_function=text_processing):
 	from bs4 import BeautifulSoup
 	from re import sub as replace
@@ -110,13 +124,14 @@ def prepare_reuters_data(file_name_list=list(),
 
 			text = record.find(text_tag).text
 			if process_text:
-				# remove caracteres que nao alpha-numerico e
+				# remove caracteres que nao letras e
 				# espaco, tambem muda texto para caixa baixo
 				# substitue qualquer espaco por apenas um
 				text = replace(r'([\s]+)', r' ', text.lower())
 				text = replace(r'([^a-zA-Z ]+)', r'', text)
 				# aplica funcao processing_text_function
-				text = text_processing_function(text)
+				text = text_processing_function(text=text, 
+							min_size=min_word_size)
 			result['texts'].append(text)
 			
 			#print(index)
@@ -298,7 +313,7 @@ contractions_without_punc = replace(r'([^a-z ]+)', r'', ' '.join(contractions.ke
 #
 ###
 
-def learn_naivebayes_text(texts=[]):
+def learn_naivebayes_text(texts=[], min_word_size=4):
 	from datetime import datetime as date
 	from decimal import Decimal, Context 
 	
@@ -307,7 +322,8 @@ def learn_naivebayes_text(texts=[]):
 
 	if type(texts).__name__ == 'list':
 		print('Preparando dados')
-		proc_texts = prepare_reuters_data(texts)
+		proc_texts = prepare_reuters_data(texts, 
+						min_word_size=min_word_size)
 	else:
 		proc_texts = texts
 	
@@ -387,7 +403,7 @@ def learn_naivebayes_text(texts=[]):
 # 
 ###
 
-def query_naivebayes(model={}, text='', k=1):
+def query_naivebayes(model={}, text='', min_word_size=4, k=1):
 	from decimal import Decimal, Context
 	from math import log
 	from re import sub as replace
@@ -398,7 +414,8 @@ def query_naivebayes(model={}, text='', k=1):
 	# processa texto para de ter apenas palavras significativas
 	if type(text).__name__ == 'str':
 		print('Processando texto, stemming, removendo stopwords ....\n\n')
-		words = text_processing( replace(r'([^a-zA-Z ]+)', r'', text) )
+		words = text_processing( replace(r'([^a-zA-Z ]+)', r'', text),
+				min_word_size=min_word_size)
 	else:
 		words = text
 	
@@ -480,7 +497,8 @@ text3 = "The International Coffee Organization (ICO ) council talks on reintrodu
 #
 ###
 
-def validate_naivebayes(model, proc_texts={}, k=5, silence=True):
+def validate_naivebayes(model, proc_texts={}, min_word_size=4, 
+						k=5, silence=True):
 	total_texts = len(proc_texts['texts'])
 	
 	from datetime import datetime as date
@@ -529,7 +547,7 @@ def validate_naivebayes(model, proc_texts={}, k=5, silence=True):
 ###
 
 def avalia_naivebayes(directory='./', texts={}, training_prop=0.7, 
-						min_text=100, k=5):
+						min_word_size=4, min_text=100, k=5):
 	from os import listdir
 	from random import sample
 
@@ -596,16 +614,43 @@ def avalia_naivebayes(directory='./', texts={}, training_prop=0.7,
 
 	# "treina" o modelo
 	print("\nProcesso de treinamento")
-	model = learn_naivebayes_text(training_set)
+	model = learn_naivebayes_text(training_set, min_word_size=min_word_size)
 	#model = learn_naivebayes_text(proc_texts)
 
 	# avaliando modelo, retorna os "k" topicos mais provaveis
 	print("\nProcesso de validacao")
-	acertos = validate_naivebayes(model=model, proc_texts=test_set, k=k, silence=True)
+	acertos = validate_naivebayes(model=model, 
+		min_word_size=min_word_size, proc_texts=test_set, 
+		k=k, silence=True)
 	
 	print("\n\nPorcentagem de acertos %f\n\n"% acertos)
 
 	return {'dataset': proc_texts, 'test_ids':test_ids, 
 			'training_set':training_set ,'test_set':test_set,
 			'model': model, 'acertos': acertos}
+
+
+if __name__ == '__main__':
+	from sys import argv
+	
+	if len(argv) < 5:
+		print('Usage: python %s directory training_prop min_word min_text k' % argv[0])
+		print("""Parametros:
+	directory: Diretório com os arquivos de notícias.
+		Exemplo './'
+	training_prop: Proporção do conjunto de dados usada para treinamento
+		Exemplo 0.7
+	min_word_size: Tamanho mínimo das palavras após o stemming
+		Exemplo 4
+	min_text: Número mínimo de textos que um tópico precisa ter para não ser descartado
+		Exemplo 100
+	k: Número de tópicos retornados pelo classificador Naive Bayes
+		Exemplo 5""")
+	else:
+		avalia_naivebayes(directory=argv[1], 
+				training_prop=float(argv[2]), 
+				min_word_size=int(argv[3]), 
+				min_text=int(argv[4]), 
+				k=int(argv[5]))
+	
 
