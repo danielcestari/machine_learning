@@ -1,3 +1,7 @@
+#coding: utf-8
+
+# Codificado para python 3.3
+
 ###
 # Funcao que quebra faz o split do texto pelo espaco, 
 # removendo stopwords e palavras maiores que um certo 
@@ -72,7 +76,7 @@ def nltk_tokenizer(text, min_size=4, *args, **kwargs):
 
 def prepare_reuters_data(file_name_list=list(), 
 			min_word_size=4, process_text=True,
-			text_processing_function=text_processing):
+			text_processing_function=nltk_tokenizer):
 	from bs4 import BeautifulSoup
 	from re import sub as replace
 	from datetime import datetime as date
@@ -444,20 +448,6 @@ def query_naivebayes(model={}, text='', min_word_size=4, k=1):
 	return sorted_probs[0:k]
 
 
-import re
-text = 'International Coffee Organization (ICO) exporters will modify their new proposal on quota resumption before presenting it to importers tomorrow, ICO delegates said. The change, which will be discussed tonight informally among producers, follows talks after the formal producer session with the eight-member producer splinter group and will affect the proposed quota distribution for 12 months from April one, they said. The proposed share-out would still include shortfall declarations, they said.'
-#model = learn_naivebayes_text(all_reuters)
-
-#probs = query_naivebayes(model, re.sub(r'([^a-zA-Z ]+)', r'', text))
-
-text2 = "New Zealand's trading bank seasonally adjusted deposit growth rose 2.6 pct in January compared with a rise of 9.4 pct in December, the Reserve Bank said. Year-on-year total deposits rose 30.6 pct compared with a 26.3 pct increase in the December year and 34.5 pct rise a year ago period, it said in its weekly statistical release. Total deposits rose to 17.18 billion N.Z. Dlrs in January compared with 16.74 billion in December and 13.16 billion in January 1986."
-
-"The Italian treasury said annual coupon rates payable March 1988 on two issues of long-term treasury certificates (CCTs) would be cut by about four percentage points compared with rates this March. Coupon rates on 10-year certificates maturing March 1995 	will fall to 9.80 pct from 13.65 pct and rates on 10-year 	issues maturing in March 1996 would fall to 10.05 pct from 14.30 pct. The Treasury also cut by 0.60 point six-monthly coupons payable this September on six issues maturing between September 1988 and September 1991. The issues carry terms of between five and seven years and will have coupon rates of between 4.85 and 5.65 pct in September compared with 5.45 and 6.25 pct this March."
-
-
-
-text3 = "The International Coffee Organization (ICO ) council talks on reintroducing export quotas continued with an extended session lasting late into Sunday night, but delegates said prospects for an accord between producers and consumers were diminishing by the minute. The special meeting, called to stop the prolonged slide in coffee prices, was likely to adjourn sometime tonight without agreement, delegates said. The council is expected to agree to reconvene either within the next six weeks or in September, they said.  The talks foundered on Sunday afternoon when it became apparent consumers and producers could not compromise on the formula for calculating any future quota system, delegates said. Coffee export quotas were suspended a year ago when prices soared in response to a drought which cut Brazil's crop by nearly two-thirds. Brazil is the world's largest coffee producer and exporter."
-
 
 ##
 # Funcao que valida um "modelo" de naive bayes.
@@ -504,6 +494,13 @@ def validate_naivebayes(model, proc_texts={}, min_word_size=4,
 	from datetime import datetime as date
 	print("Validando " + date.now().strftime('[%Y-%m-%d %H:%M:%S]')) 
 
+
+	# opcao 'quiet'
+	import sys, os
+	old_stdout = sys.stdout
+	if silence:
+		sys.stdout = open(os.devnull, 'w')
+
 	acertos = 0
 	for index in range(0, total_texts):
 		text = proc_texts['texts'][index]
@@ -524,7 +521,12 @@ def validate_naivebayes(model, proc_texts={}, min_word_size=4,
 		if result:
 			acertos += 1
 	
-	print("\nQUANTIDADE DE ACERTOS %d\n"% acertos)
+	# opcao 'quiet'
+	if silence:
+		sys.stdout.close()
+		sys.stdout = old_stdout
+
+	print("\nQuantidade de acertos no test set %d\n"% acertos)
 
 	return acertos / total_texts
 
@@ -542,7 +544,67 @@ def validate_naivebayes(model, proc_texts={}, min_word_size=4,
 #					com os "k" topicos mais provaveis que o
 #					naive bayes retorna
 ##
+# Retorna dicionario contendo:
+# - Dataset total processado, mesma estrutura retornada pela 
+# funcao prepare_reuters_data.
+# - Um array com os indices dos textos usados no test set, 
+# indices relativos ah estrutura anterior.
+# - Training set, estrutura como a do dataset, mas apenas com
+# textos e topicos usados no training set.
+# - Test set, estrutura como a do dataset, mas apenas com
+# textos e topicos usados no test set.
+# - model, "modelo" do naive bayes, basicamente estrutura com
+# as probabilidades calculadas.
+# - porcentagem de acertos, relativa aos textos do test set
 #
+##
+# Exemplo:
+# {
+#	'dataset': {
+#		'text_to_topics': [
+#			...
+#			['cocoa'],
+#			['grain', 'wheat', 'corn', 'barley', 'oat', 'sorghum'],
+#			...
+#		],
+#		'texts': [
+#			...
+#			['champion', 'product', 'approv', 'stock', 'split', 'rochest', 'champion', 'product', 'said', 'board', 'director', 'approv', 'twoforon', 'stock', 'split', 'common', 'share', 'sharehold', 'record', 'april', 'compani', 'also', 'said', 'board', 'vote', 'recommend', 'sharehold', 'annual', 'meet', 'april', 'increas', 'author', 'capit', 'stock', 'five', 'share', 'reuter'],
+#			['cobanco', 'cbco', 'year', 'santa', 'cruz', 'calif', 'dlrs', 'asset', 'deposit', 'loan', 'note', 'avail', 'year', 'includ', 'extraordinari', 'gain', 'carri', 'forward', 'dlrs', 'five', 'reuter'],
+#			...
+#		],
+#		'topics': {
+#			...
+#			'dmk': [1651, 6146, 6163, 6421, 6869, 6886, 7223, 7226, 7455, 7756, 9447, 9563, 9792, 11326, 11349],
+#			'orange': [707, 714, 919, 1242, 1669, 1675, 1699, 1789, 2120, 2276, 2522, 4190, 4526, 5355, 6336, 7373, 8370, 8456, 8457, 8461, 8462, 8522, 8538, 8929, 8931, 9020, 9110, 9417, 9484],
+#			...
+#		}
+#	}, 
+#	'test_ids': [7, 12, 20, 24, 31, 60, 88, 98, 103, 133, 134, 137, 159, 168, 175, 184, 190, 195, 230, 239, 240, 244, 254, 256, 280, 284, 304, 307, 308, 331, 339, 353, 366, 390, 398, 407 ...],
+#   'training_set': MESMA ESTRUTURA QUE dataset ,
+#	'test_set': MESMA ESTRURUTA QUE dataset,
+#	'model': {
+#       ...
+#       'sugar': {
+#           'P_wk': {
+#               ...
+#               'hwtas': Decimal('2.190288077285611261942783455E-33'), 
+#               'gail': Decimal('3.164658004748332621060208769E-10'), 
+#               'priceshar': Decimal('1.095144038642805630971391728E-33'),
+#               ...
+#           }, 
+#           'P_topic': Decimal('0.01486759919063957054163882531838680733926594257354736328125')
+#       }, 
+#       'ship': {
+#           'P_wk': {...}, 'P_topic': {...}
+#       }, 
+#       'money-supply': {
+#           'P_wk': {...}, 'P_topic': {...}
+#       },
+#       ...
+#   }, 
+#	'por_acertos': 0.38783269961977185
+# }
 #
 ###
 
@@ -619,24 +681,24 @@ def avalia_naivebayes(directory='./', texts={}, training_prop=0.7,
 
 	# avaliando modelo, retorna os "k" topicos mais provaveis
 	print("\nProcesso de validacao")
-	acertos = validate_naivebayes(model=model, 
+	por_acertos = validate_naivebayes(model=model, 
 		min_word_size=min_word_size, proc_texts=test_set, 
 		k=k, silence=True)
 	
-	print("\n\nPorcentagem de acertos %f\n\n"% acertos)
+	print("\n\nPorcentagem de acertos %f\n\n"% por_acertos)
 
 	return {'dataset': proc_texts, 'test_ids':test_ids, 
 			'training_set':training_set ,'test_set':test_set,
-			'model': model, 'acertos': acertos}
+			'model': model, 'por_acertos': por_acertos}
 
 
 if __name__ == '__main__':
-	from sys import argv
+	from sys import argv, exit
 	
 	if len(argv) < 5:
-		print('Usage: python %s directory training_prop min_word min_text k' % argv[0])
+		print('Usage: python %s directory training_prop min_word_size min_text k' % argv[0])
 		print("""Parametros:
-	directory: Diretório com os arquivos de notícias.
+	directory: Diretório com os arquivos de notícias, apenas as notícias.
 		Exemplo './'
 	training_prop: Proporção do conjunto de dados usada para treinamento
 		Exemplo 0.7
@@ -646,11 +708,12 @@ if __name__ == '__main__':
 		Exemplo 100
 	k: Número de tópicos retornados pelo classificador Naive Bayes
 		Exemplo 5""")
+		print('Codificado para python 3.3')
 	else:
-		avalia_naivebayes(directory=argv[1], 
+		result = avalia_naivebayes(directory=argv[1], 
 				training_prop=float(argv[2]), 
 				min_word_size=int(argv[3]), 
 				min_text=int(argv[4]), 
 				k=int(argv[5]))
-	
+		exit(result['por_acertos'])
 
