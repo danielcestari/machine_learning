@@ -8,12 +8,16 @@
 # epsilon		=> Valor limite de distancia para dois pontos 
 #					serem considerados pertencentes ao mesmo 
 #					cluster
+# MinPts		=> Numero minimo de pontos que um clusters
+# 					precisa ter para ser considerado um 
+# 					cluster e nao outliers
 ##
-# Retorna um vetor com os clusters que determinada posicao 
-# representa do dataset
+# Retorna um vetor com o cluster que determinada posicao 
+# representa no dataset. Clusters marcados como zero, são 
+# considerados outliers.
 ###
 
-dbscan_dist <- function(dataset, epsilon){
+dbscan <- function(dataset, epsilon, MinPts=5){
 	
 	# calcula a matriz de distancia
 	dist_mat = as.matrix(dist(as.matrix(dataset)))
@@ -51,10 +55,18 @@ dbscan_dist <- function(dataset, epsilon){
 		clusters[[i]] = cluster
 		i = i + 1
 	}
+
+	# remove clusters com menos pontos que MinPts
+	remove = c()
+	for(i in 1:length(clusters)){
+		if( length(clusters[[i]]) < MinPts)
+			remove = c(remove, i)
+	}
+	clusters[ remove ] = NULL
 	
 	# prepara o retorno, uma lista com o cluster de cada 
 	# elemento
-	ret = rep(-1, nrow(dataset))
+	ret = rep(0, nrow(dataset))
 	for(i in 1:length(clusters)){
 		ret[ clusters[[i]] ] = i
 	}
